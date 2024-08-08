@@ -16,6 +16,20 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 
+public class CarRentalContext : DbContext
+{
+  public DbSet<Car> Cars { get; set; }
+
+  protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+  {
+    optionsBuilder.UseSqlServer("YourConnectionStringHere");
+  }
+}
+
+
+
+
+
 namespace CarRental
 {
   public class Reservation
@@ -23,9 +37,12 @@ namespace CarRental
     [Key] public static int id { get; set; } = 1;
     public DateTime day_1 { get; set; }
     public DateTime day_n { get; set; }
+    
+    public Reservation() { }
 
     public Reservation(DateTime start, DateTime end)
     {
+      id++;
       day_1 = start;
       day_n = end;
     }
@@ -33,12 +50,12 @@ namespace CarRental
   public class Car
   {
     [Key]
-    public string id { get; set; }
-    public string nr_inmatriculare { get; set; }
+    public string? id { get; set; }
+    public string? nr_inmatriculare { get; set; }
 
-    public string firma { get; set; }
-    public string model { get; set; }
-    public string culoare { get; set; }
+    public string? firma { get; set; }
+    public string? model { get; set; }
+    public string? culoare { get; set; }
     public int an_fabricatie { get; set; }
     public int pret_zi { get; set; }
     public int km { get; set; }
@@ -49,12 +66,14 @@ namespace CarRental
     
     public int quality_class { get; set; }
     
-    public List<Reservation> reservations { get; set; }
+    public List<Reservation>? reservations { get; set; }
 
-    public Car(string id2 = "ABC123", string nr_inmatriculare2 = "B 01 ZZZ", string firma2 = "Porsche",
+    public Car() { }
+
+    public Car(List<Reservation> rezervari, string id2 = "ABC123", string nr_inmatriculare2 = "B 01 ZZZ", string firma2 = "Porsche",
       string model2 = "911", string culoare2 = "frozenberrymetallic",
       int an2 = 2024, int pret_zi2 = 1000, int km2 = 10, bool valabilitate = true, bool is_for_sale2 = false,
-      int pret_vanzare2 = 0, int qualityClass2 = 1, List<Reservation> rezervari = null)
+      int pret_vanzare2 = 0, int qualityClass2 = 1)
     {
       id = id2;
       nr_inmatriculare = nr_inmatriculare2;
@@ -120,13 +139,19 @@ namespace CarRental
     
     public bool check_availability(DateTime first_day, DateTime last_day)
     {
-      foreach (var reservation in reservations)
+      if (reservations != null)
       {
-        if ((first_day < reservation.day_n) && (last_day > reservation.day_1))
+        foreach (var reservation in reservations)
         {
-          return false;
+          if ((first_day < reservation.day_n) && (last_day > reservation.day_1))
+          {
+            return false;
+          }
         }
+
+        return true;
       }
+
       return true;
     }
 
@@ -186,7 +211,7 @@ namespace CarRental
         car2.is_for_sale = masinuta.is_for_sale;
         car2.pret_vanzare = masinuta.pret_vanzare;
 
-        DoWorkAsync();
+        Task.Run(() => SomeMethodAsync()).GetAwaiter().GetResult();
       }
       else
       {
@@ -196,7 +221,14 @@ namespace CarRental
 
     public Car find_by_id(string id)
     {
-      return car.FirstOrDefault(c => c.id == id);
+      Car? masina = car.FirstOrDefault(c => c.id == id);
+      if (masina != null)
+      {
+        return masina;
+      }
+
+      Reservation rezervare = new Reservation();
+      return new Car(); 
     }
     
     public List<Car> available_cars_list(DateTime first_day, DateTime last_day)
@@ -209,6 +241,11 @@ namespace CarRental
       Console.WriteLine("Your changes are being saved...");
       await Task.Delay(2000); // Simulates a 2-second delay
       Console.WriteLine("Changes saved");
+    }
+    
+    static async Task SomeMethodAsync()
+    {
+      await DoWorkAsync();
     }
   }
   
@@ -271,19 +308,25 @@ namespace CarRental
       while (true)
       {
         Console.WriteLine("Choose the date when you would like to pick up your car (YYYY-MM-DD): ");
-        string day1str = Console.ReadLine();
-        Console.WriteLine("Choose the date when you would like to return your car (YYYY-MM-DD): ");
-        string daynstr = Console.ReadLine();
-        DateTime.TryParse(day1str, out day1);
-        DateTime.TryParse(daynstr, out dayn);
+        string? day1str = Console.ReadLine();
+        if (day1str != null)
+        {
+          Console.WriteLine("Choose the date when you would like to return your car (YYYY-MM-DD): ");
+          string? daynstr = Console.ReadLine();
+          if (daynstr != null)
+          {
+            DateTime.TryParse(day1str, out day1);
+            DateTime.TryParse(daynstr, out dayn);
         
-        if ((dayn - day1).Days <= 0 || dayn <= day1)
-        {
-          Console.WriteLine("Your input is not correct. Please try again\n");
-        }
-        else
-        {
-          break;
+            if ((dayn - day1).Days <= 0 || dayn <= day1)
+            {
+              Console.WriteLine("Your input is not correct. Please try again\n");
+            }
+            else
+            {
+              break;
+            }
+          }
         }
       }
 
@@ -296,12 +339,13 @@ namespace CarRental
       while (true)
       {
         Reservation rezervare = set_date();
-        var availableCars = Program.Fleet_global.fleet.available_cars_list(rezervare.day_1, rezervare.day_n);
-        if (availableCars.Count == 0)
+        
+        List<Car>? availableCars = Program.Fleet_global.fleet?.available_cars_list(rezervare.day_1, rezervare.day_n);
+        if (availableCars != null && availableCars.Count == 0)
         {
           Console.WriteLine("We are sorry, but there is no car available when you need it. Try another period of time");
         }
-        else
+        else if (availableCars != null)
         {
           Console.WriteLine("Here are the available options for your chosen dates:\n");
           for (int i = 0; i < availableCars.Count; i++)
@@ -310,29 +354,39 @@ namespace CarRental
             masina.show_details();
           }
           Console.WriteLine("Choose the number of your desired car: ");
-          int bucsa = int.Parse(Console.ReadLine()) - 1;
-          
-          if (bucsa >= 0 && bucsa < availableCars.Count)
+          string? input = Console.ReadLine();
+          if (input != null && int.TryParse(input, out int result))
           {
-            var masina_selectata = availableCars[bucsa];
-            Console.WriteLine("This is the car that you chose");
-            masina_selectata.show_details();
-            Console.WriteLine("Would you like to confirm your choice?\nPress 1 for yes\nPress 0 for no");
-            int choice = int.Parse(Console.ReadLine());
-
-            if (choice == 1)
+            int bucsa = result - 1;
+            if (bucsa >= 0 && bucsa < availableCars.Count)
             {
-              rented_car = masina_selectata;
-              calculate_price();
-              Console.WriteLine($"The price for your choice is: {final_price}");
-            }
+              var masina_selectata = availableCars[bucsa];
+              Console.WriteLine("This is the car that you chose");
+              masina_selectata.show_details();
+              Console.WriteLine("Would you like to confirm your choice?\nPress 1 for yes\nPress 0 for no");
 
-            payment_page();
-            break;
+              string? input3 = Console.ReadLine();
+              if (input3 != null && int.TryParse(input3, out int choice))
+              {
+                if (choice == 1)
+                {
+                  rented_car = masina_selectata;
+                  calculate_price();
+                  Console.WriteLine($"The price for your choice is: {final_price}");
+                }
+                else
+                {
+                  Console.WriteLine("The process was stopped by the user. Please try again later");
+                }
+              }
+
+              payment_page();
+              break;
+            }
           }
           else
           {
-            Console.WriteLine("Selecție invalidă.");
+            Console.WriteLine("Choose a valid number!");
           }
         }
       }
@@ -342,7 +396,8 @@ namespace CarRental
     void payment_page()
     {
       Console.WriteLine("The only available option is to pay with a credit card. ");
-      PaymentPage();
+      Task.Run(() => PaymentPage()).GetAwaiter().GetResult();
+      ;
       credit_card_payment();
       Console.WriteLine("Thank you for your payment! We are waiting for you to come and pick your car");
     }
@@ -350,21 +405,26 @@ namespace CarRental
     void credit_card_payment()
     {
       Console.WriteLine("Credit card number: ");
-      string cc_number = Console.ReadLine();
-      PaymentCheck();
+      string? cc_number = Console.ReadLine();
+      Task.Run(() => PaymentCheck()).GetAwaiter().GetResult();
 
       DateTime expDate;
       Console.WriteLine("Expiry date (YYYY-MM-DD)");
-      string expiry_date = Console.ReadLine();
+      string? expiry_date = Console.ReadLine();
       DateTime.TryParse(expiry_date, out expDate);
         
       Console.WriteLine("CVV/CVC: ");
-      int cvv = int.Parse(Console.ReadLine());
+      string? input4 = Console.ReadLine();
+    
+      if (input4 != null && int.TryParse(input4, out int cvv))
+      {
+        Console.WriteLine("\u2713");
+      }      
     }
     
     static async Task PaymentCheck()
     {
-      Console.WriteLine("We are identifying your bak...");
+      Console.WriteLine("We are identifying your bank...");
       await Task.Delay(2000); // Simulates a 2-second delay
       Console.WriteLine("Visa");
     }
@@ -374,6 +434,11 @@ namespace CarRental
       Console.WriteLine("Wait a second! You are being redirected to the payment page...");
       await Task.Delay(2000); 
       Console.WriteLine("Please introduce your credit card info\n");
+    }
+    
+    public async Task call_payment_page()
+    {
+      await PaymentPage();
     }
   }
 }
@@ -409,16 +474,26 @@ namespace MainP
   {
     public static class Fleet_global
     {
-      public static Car_Fleet fleet { get; set; }
+      public static Car_Fleet? fleet { get; set; }
     }
     static void Main()
     {
       Console.WriteLine("Hello! Please select what would you like to do:\nPress 1 to look through our cars\nPress 2 to sign in\nPress 3 to create an account");
-      int input = int.Parse(Console.ReadLine());
-
-      if (input == 1)
+      
+      
+      // int input = int.Parse(Console.ReadLine());
+      string? input2 = Console.ReadLine(); // Permite input nullabil
+    
+      if (!int.TryParse(input2, out int input))
       {
+        Console.WriteLine("Invalid input. Please enter a valid number.");
+      }
+      else
+      {
+        if (input == 1)
+        {
         
+        }
       }
     }
   }
